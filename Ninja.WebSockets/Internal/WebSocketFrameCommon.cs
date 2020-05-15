@@ -28,6 +28,8 @@ namespace Ninja.WebSockets.Internal
     {
         public const int MaskKeyLength = 4;
 
+        internal static readonly bool Is64 = Environment.Is64BitProcess;
+
         /// <summary>
         /// Mutate payload with the mask key
         /// This is a reversible process
@@ -42,20 +44,70 @@ namespace Ninja.WebSockets.Internal
                 throw new Exception($"MaskKey key must be {MaskKeyLength} bytes");
             }
 
-            byte[] buffer = payload.Array;
-            byte[] maskKeyArray = maskKey.Array;
-            int payloadOffset = payload.Offset;
-            int payloadCountPlusOffset = payload.Count + payloadOffset;
-            int maskKeyOffset = maskKey.Offset;
-
             // apply the mask key (this is a reversible process so no need to copy the payload)
-            // NOTE: this is a hot function
-            // TODO: make this faster
-            for (int i = payloadOffset; i < payloadCountPlusOffset; i++)
+            if (Is64)
             {
-                int payloadIndex = i - payloadOffset; // index should start at zero
-                int maskKeyIndex = maskKeyOffset + (payloadIndex % MaskKeyLength);
-                buffer[i] = (Byte)(buffer[i] ^ maskKeyArray[maskKeyIndex]);
+                ToggleMask64(maskKey.Array, maskKey.Offset, payload.Array,
+                    payload.Offset, payload.Count);
+            }
+            else
+            {
+                ToggleMask32(maskKey.Array, maskKey.Offset, payload.Array,
+                    payload.Offset, payload.Count);
+            }
+        }
+
+        public static unsafe void ToggleMask32(byte[] key, int maskKeyOffset, byte[] payload, int payloadOffset,
+            int payloadLength)
+        {
+            int chunks = payloadLength / 4;
+            fixed (byte* keyBytes = key)
+            {
+                fixed (byte* payloadBytes = payload)
+                {
+                    int* key32 = (int*) keyBytes;
+                    int* bytes32 = (int*) payloadBytes;
+                    key32 += maskKeyOffset;
+                    bytes32 += payloadOffset;
+                    for (int p = 0; p < chunks; p++)
+                    {
+                        *bytes32 ^= *key32;
+                        bytes32++;
+                    }
+                }
+            }
+
+            for (int index = chunks * 4; index < payloadLength; index++)
+            {
+                payload[index] ^= key[index % 4];
+            }
+        }
+
+        public static unsafe void ToggleMask64(byte[] key, int maskKeyOffset, byte[] payload, int payloadOffset,
+            int payloadLength)
+        {
+            byte* keyDup = stackalloc byte[8];
+            for (int i = 0; i < 8; i++)
+            {
+                keyDup[i] = key[(i % 4) + maskKeyOffset];
+            }
+
+            int chunks = payloadLength / 8;
+            fixed (byte* payloadBytes = payload)
+            {
+                long* key64 = (long*) keyDup;
+                long* bytes64 = (long*) payloadBytes;
+                bytes64 += payloadOffset;
+                for (int p = 0; p < chunks; p++)
+                {
+                    *bytes64 ^= *key64;
+                    bytes64++;
+                }
+            }
+
+            for (int index = chunks * 8; index < payloadLength; index++)
+            {
+                payload[index] ^= keyDup[index % 8];
             }
         }
     }

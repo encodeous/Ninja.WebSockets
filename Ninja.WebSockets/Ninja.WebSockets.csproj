@@ -24,6 +24,7 @@ A WebSocket library that allows you to make WebSocket connections as a client or
     <SignAssembly>false</SignAssembly>
     <AssemblyOriginatorKeyFile>Ninja.WebSockets.pfx</AssemblyOriginatorKeyFile>
     <Configurations>Debug;Release;ReleaseSigned</Configurations>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|netstandard2.0|AnyCPU'">
